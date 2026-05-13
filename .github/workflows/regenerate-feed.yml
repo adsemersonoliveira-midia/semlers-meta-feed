@@ -1,0 +1,40 @@
+name: Regenerate Meta Catalog Feed
+
+on:
+  schedule:
+    # Every hour at minute 5 (gives time for SandHills updates)
+    - cron: '5 * * * *'
+  workflow_dispatch: # allow manual trigger
+
+permissions:
+  contents: write
+
+jobs:
+  regenerate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Generate Meta catalog CSV
+        run: python3 meta-catalog-feed.py --output meta_catalog.csv
+
+      - name: Validate CSV
+        run: python3 meta-catalog-validate.py meta_catalog.csv --skip-url-check
+
+      - name: Commit if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet meta_catalog.csv 2>/dev/null && ! git status --porcelain meta_catalog.csv | grep -q .; then
+            echo "No changes to commit"
+          else
+            git add meta_catalog.csv
+            git commit -m "chore: regenerate feed ($(date -u +'%Y-%m-%d %H:%M UTC'))"
+            git push
+          fi
