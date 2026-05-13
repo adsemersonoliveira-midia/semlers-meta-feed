@@ -166,6 +166,12 @@ def transform_row(row: dict):
         "https://www.marketbook.ca", "https://semlers.com"
     )
 
+    # Custom labels for Sets segmentation
+    inventory_type = row.get("InventoryType", "")
+    category_full = row.get("Category", "")
+    # custom_label_1 = top-level segment of category (e.g., "Heavy Duty Trucks", "Dozers", "Semi-Trailers")
+    category_top = category_full.split(" - ")[0].strip() if category_full else ""
+
     result = {
         "vehicle_id": vehicle_id,
         "title": clean_title(display_name, year, make, model),
@@ -192,6 +198,9 @@ def transform_row(row: dict):
         "address.city": row.get("LocationCity", ""),
         "address.region": row.get("LocationState", ""),
         "address.country": row.get("LocationCountry", ""),
+        "custom_label_0": inventory_type,
+        "custom_label_1": category_top,
+        "custom_label_2": category_full,
         "address.postal_code": row.get("LocationZip/Postal Code", ""),
     }
 
@@ -227,6 +236,9 @@ META_COLUMNS = [
     "address.region",
     "address.country",
     "address.postal_code",
+    "custom_label_0",
+    "custom_label_1",
+    "custom_label_2",
 ] + [f"image[{i}].url" for i in range(20)]
 
 
