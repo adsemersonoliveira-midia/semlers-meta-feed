@@ -49,6 +49,16 @@ def normalize_condition(condition: str) -> str:
     return mapping.get(condition.lower(), "used")
 
 
+def normalize_state_of_vehicle(condition: str) -> str:
+    """Meta Vehicle Catalog requires NEW/USED/CPO."""
+    c = condition.lower().strip()
+    if c == "new":
+        return "NEW"
+    if "certified" in c:
+        return "CPO"
+    return "USED"
+
+
 def normalize_fuel(fueltype: str) -> str:
     mapping = {
         "diesel": "diesel",
@@ -157,59 +167,67 @@ def transform_row(row: dict):
     )
 
     result = {
-        "id": row.get("DSInventoryLookupID", ""),
         "vehicle_id": vehicle_id,
         "title": clean_title(display_name, year, make, model),
         "description": row.get("Description", "")[:5000],
-        "availability": normalize_availability(row.get("Status", "")),
-        "condition": normalize_condition(row.get("Condition", "used")),
-        "price": price,
-        "link": listing_url,
-        "image_link": images[0],
-        "year": year,
+        "url": listing_url,
         "make": make,
         "model": model,
-        "vin": vin,
-        "mileage.value": mileage_value,
-        "mileage.unit": mileage_unit,
-        "transmission": row.get("transmission", ""),
-        "fuel_type": normalize_fuel(row.get("fueltype", "")),
+        "year": year,
+        "mileage.value": mileage_value or "0",
+        "mileage.unit": mileage_unit or "KM",
+        "price": price,
+        "state_of_vehicle": normalize_state_of_vehicle(row.get("Condition", "")),
         "exterior_color": row.get("color", ""),
-        "drivetrain": row.get("drive", ""),
+        "transmission": row.get("transmission", ""),
         "body_style": derive_body_style(
             row.get("InventoryType", ""), row.get("Category", "")
         ),
+        "fuel_type": normalize_fuel(row.get("fueltype", "")),
+        "drivetrain": row.get("drive", ""),
+        "vin": vin,
+        "condition": normalize_condition(row.get("Condition", "used")),
+        "availability": normalize_availability(row.get("Status", "")),
+        "address.addr1": row.get("LocationAddress", ""),
+        "address.city": row.get("LocationCity", ""),
+        "address.region": row.get("LocationState", ""),
+        "address.country": row.get("LocationCountry", ""),
+        "address.postal_code": row.get("LocationZip/Postal Code", ""),
     }
 
-    # Additional images (Meta supports up to 9 extras = indices 0–8)
-    for i, url in enumerate(images[1:10]):
-        result[f"additional_image_link[{i}]"] = url
+    # Images: Meta Vehicle Catalog expects image[0].url, image[1].url, etc. (up to 20)
+    for i, url in enumerate(images[:20]):
+        result[f"image[{i}].url"] = url
 
     return result
 
 
 META_COLUMNS = [
-    "id",
     "vehicle_id",
     "title",
     "description",
-    "availability",
-    "condition",
-    "price",
-    "link",
-    "image_link",
-    "year",
+    "url",
     "make",
     "model",
-    "vin",
+    "year",
     "mileage.value",
     "mileage.unit",
-    "transmission",
-    "fuel_type",
+    "price",
+    "state_of_vehicle",
     "exterior_color",
-    "drivetrain",
+    "transmission",
     "body_style",
-] + [f"additional_image_link[{i}]" for i in range(9)]
+    "fuel_type",
+    "drivetrain",
+    "vin",
+    "condition",
+    "availability",
+    "address.addr1",
+    "address.city",
+    "address.region",
+    "address.country",
+    "address.postal_code",
+] + [f"image[{i}].url" for i in range(20)]
 
 
 def main():

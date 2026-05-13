@@ -16,9 +16,10 @@ import urllib.error
 from collections import defaultdict
 
 REQUIRED_FIELDS = [
-    "id", "vehicle_id", "title", "description", "availability",
-    "condition", "price", "link", "image_link", "year", "make", "model",
-    "body_style",
+    "vehicle_id", "title", "description", "url", "make", "model", "year",
+    "mileage.value", "mileage.unit", "price", "state_of_vehicle",
+    "image[0].url", "address.addr1", "address.city", "address.region",
+    "address.country",
 ]
 
 VALID_AVAILABILITY = {"available", "not available"}
@@ -76,20 +77,14 @@ def validate(csv_path: str, skip_url_check: bool = False):
 
     # ── Field-level validation ────────────────────────────────────
     for i, row in enumerate(rows, start=2):  # row 1 is header
-        row_id = row.get("id", f"[linha {i}]")
+        row_id = row.get("vehicle_id", f"[linha {i}]")
 
         # Required fields
         for field in REQUIRED_FIELDS:
             if not row.get(field, "").strip():
-                errors.append(f"Linha {i} (id={row_id}): campo obrigatório vazio — '{field}'")
+                errors.append(f"Linha {i} (vehicle_id={row_id}): campo obrigatório vazio — '{field}'")
 
-        # Duplicate id
-        if row["id"] in ids_seen:
-            errors.append(f"Linha {i}: id duplicado '{row['id']}' (já visto na linha {ids_seen[row['id']]})")
-        else:
-            ids_seen[row["id"]] = i
-
-        # Duplicate vehicle_id (warning only — can be legitimate)
+        # Duplicate vehicle_id
         vid = row.get("vehicle_id", "")
         if vid and vid in vehicle_ids_seen:
             warnings.append(f"Linha {i}: vehicle_id duplicado '{vid}' (linha {vehicle_ids_seen[vid]})")
@@ -99,55 +94,55 @@ def validate(csv_path: str, skip_url_check: bool = False):
         # availability
         av = row.get("availability", "").strip().lower()
         if av not in VALID_AVAILABILITY:
-            errors.append(f"Linha {i} (id={row_id}): availability inválido — '{av}'")
+            errors.append(f"Linha {i} (vehicle_id={row_id}): availability inválido — '{av}'")
 
         # condition
         cond = row.get("condition", "").strip().lower()
         if cond not in VALID_CONDITION:
-            errors.append(f"Linha {i} (id={row_id}): condition inválido — '{cond}'")
+            errors.append(f"Linha {i} (vehicle_id={row_id}): condition inválido — '{cond}'")
 
         # price format
         price = row.get("price", "").strip()
         if price and not PRICE_RE.match(price):
-            errors.append(f"Linha {i} (id={row_id}): price com formato inválido — '{price}' (esperado: '129900 CAD')")
+            errors.append(f"Linha {i} (vehicle_id={row_id}): price com formato inválido — '{price}' (esperado: '129900 CAD')")
 
-        # image_link HTTPS
-        img = row.get("image_link", "").strip()
+        # image[0].url HTTPS
+        img = row.get("image[0].url", "").strip()
         if img and not img.startswith("https://"):
-            errors.append(f"Linha {i} (id={row_id}): image_link não é HTTPS — '{img[:80]}'")
+            errors.append(f"Linha {i} (vehicle_id={row_id}): image[0].url não é HTTPS — '{img[:80]}'")
 
-        # link format
-        link = row.get("link", "").strip()
+        # url format
+        link = row.get("url", "").strip()
         if link and not link.startswith("https://"):
-            errors.append(f"Linha {i} (id={row_id}): link não é HTTPS — '{link}'")
+            errors.append(f"Linha {i} (vehicle_id={row_id}): url não é HTTPS — '{link}'")
 
         # fuel_type
         fuel = row.get("fuel_type", "").strip().lower()
         if fuel not in VALID_FUEL:
-            warnings.append(f"Linha {i} (id={row_id}): fuel_type desconhecido — '{fuel}'")
+            warnings.append(f"Linha {i} (vehicle_id={row_id}): fuel_type desconhecido — '{fuel}'")
 
         # mileage consistency
         mv = row.get("mileage.value", "").strip()
         mu = row.get("mileage.unit", "").strip().upper()
         if mv and not mu:
-            errors.append(f"Linha {i} (id={row_id}): mileage.value preenchido mas mileage.unit vazio")
+            errors.append(f"Linha {i} (vehicle_id={row_id}): mileage.value preenchido mas mileage.unit vazio")
         if mu and mu not in VALID_MILEAGE_UNIT:
-            errors.append(f"Linha {i} (id={row_id}): mileage.unit inválido — '{mu}'")
+            errors.append(f"Linha {i} (vehicle_id={row_id}): mileage.unit inválido — '{mu}'")
 
         # year plausibility
         year = row.get("year", "").strip()
         if year and (not year.isdigit() or not (1950 <= int(year) <= 2030)):
-            warnings.append(f"Linha {i} (id={row_id}): year fora do intervalo esperado — '{year}'")
+            warnings.append(f"Linha {i} (vehicle_id={row_id}): year fora do intervalo esperado — '{year}'")
 
         # title length
         title = row.get("title", "")
         if len(title) > 150:
-            warnings.append(f"Linha {i} (id={row_id}): title > 150 chars ({len(title)})")
+            warnings.append(f"Linha {i} (vehicle_id={row_id}): title > 150 chars ({len(title)})")
 
         # description length
         desc = row.get("description", "")
         if len(desc) > 5000:
-            warnings.append(f"Linha {i} (id={row_id}): description > 5000 chars ({len(desc)})")
+            warnings.append(f"Linha {i} (vehicle_id={row_id}): description > 5000 chars ({len(desc)})")
 
     # ── Summary stats ─────────────────────────────────────────────
     available_count = sum(1 for r in rows if r.get("availability") == "available")
@@ -172,7 +167,7 @@ def validate(csv_path: str, skip_url_check: bool = False):
         print("── Verificação de URLs (amostra) ─────────────────────────")
 
         # Sample image URLs from first N rows with images
-        img_urls = [r["image_link"] for r in rows if r.get("image_link")][:URL_SAMPLE_SIZE]
+        img_urls = [r["image[0].url"] for r in rows if r.get("image[0].url")][:URL_SAMPLE_SIZE]
         print(f"  Testando {len(img_urls)} URLs de imagem…")
         img_fails = []
         for url in img_urls:
@@ -184,7 +179,7 @@ def validate(csv_path: str, skip_url_check: bool = False):
                 img_fails.append(url)
 
         # Sample listing URLs
-        listing_urls = [r["link"] for r in rows if r.get("link")][:5]
+        listing_urls = [r["url"] for r in rows if r.get("url")][:5]
         print(f"\n  Testando {len(listing_urls)} URLs de listagem (semlers.com)…")
         listing_fails = []
         for url in listing_urls:
