@@ -165,6 +165,8 @@ def transform_row(row: dict):
     listing_url = row.get("ListingDetailsURL", "").replace(
         "https://www.marketbook.ca", "https://semlers.com"
     )
+    if not listing_url:
+        return None
 
     # Custom labels for Sets segmentation
     inventory_type = row.get("InventoryType", "")
