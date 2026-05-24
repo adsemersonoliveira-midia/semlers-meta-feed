@@ -109,6 +109,36 @@ def clean_title(display_name: str, year: str, manufacturer: str, model: str) -> 
     return title[:150]
 
 
+# Marketbook SPA params — fixed for Semler's account. Without these, listing URL returns 404.
+# Source: confirmed live URL pattern (see oraclum/semlers memory: feedback_semlers_url_marketbook_params).
+MARKETBOOK_PARAMS = "dlr=1&dscompanyid=113270&settingscrmid=17010241"
+
+
+def _kebab(s: str) -> str:
+    """Lowercase, ASCII-only, alphanumerics joined by hyphens. Used for URL slugs."""
+    s = s.lower()
+    # Replace non-alphanumeric with hyphen
+    s = re.sub(r"[^a-z0-9]+", "-", s)
+    # Collapse multiple hyphens and strip edges
+    s = re.sub(r"-+", "-", s).strip("-")
+    return s
+
+
+def build_listing_url(listing_id: str, year: str, make: str, model: str, category: str) -> str:
+    """Build the canonical semlers.com inventory URL.
+
+    Format: https://www.semlers.com/inventory/?/listing/for-sale/<id>/<slug>?<params>
+    where <slug> = kebab(year-make-model-category) — purely cosmetic, but matches
+    the live URL pattern observed on the site.
+    """
+    parts = [year, make, model, category]
+    slug = "-".join(_kebab(p) for p in parts if p)
+    return (
+        f"https://www.semlers.com/inventory/?/listing/for-sale/"
+        f"{listing_id}/{slug}?{MARKETBOOK_PARAMS}"
+    )
+
+
 def transform_row(row: dict):
     """Map a SandHills row to a Meta Vehicle Catalog row. Returns None to skip."""
     # Skip attachments/parts — not vehicles
@@ -147,8 +177,17 @@ def transform_row(row: dict):
         # Use the last segment of the category path as a readable model fallback
         model = category.split(" - ")[-1].strip() if category else "Unknown"
 
-    # vehicle_id: StockNumber preferred, fallback to DSInventoryLookupID
-    vehicle_id = row.get("StockNumber", "").strip() or row.get("DSInventoryLookupID", "")
+    # vehicle_id: extract listing_id from ListingDetailsURL (e.g. .../listing/for-sale/256109763/...)
+    # This matches the ID that appears in semlers.com URLs, enabling pixel content_ids
+    # to match via a simple regex on window.location.href in the GTM tag.
+    # Fallback to StockNumber + DSInventoryLookupID if URL parse fails (shouldn't happen).
+    listing_details_url = row.get("ListingDetailsURL", "")
+    listing_id_match = re.search(r"/listing/for-sale/(\d+)", listing_details_url)
+    vehicle_id = (
+        listing_id_match.group(1)
+        if listing_id_match
+        else (row.get("StockNumber", "").strip() or row.get("DSInventoryLookupID", ""))
+    )
 
     # Mileage
     mileage_value, mileage_unit = normalize_mileage(
@@ -161,12 +200,16 @@ def transform_row(row: dict):
     currency = row.get("CurrencyCode", "CAD") or "CAD"
     price = f"{price_val} {currency}"
 
-    # Link: transform MarketBook URL to semlers.com (confirmed working — GET 200 with Chrome UA)
-    listing_url = row.get("ListingDetailsURL", "").replace(
-        "https://www.marketbook.ca", "https://semlers.com"
+    # Link: build the canonical semlers.com inventory URL.
+    # Marketbook SPA requires path + slug + query params (?dlr=1&dscompanyid=113270&settingscrmid=17010241)
+    # to render the listing — bare /listing/for-sale/<id> returns 404.
+    # Format: https://www.semlers.com/inventory/?/listing/for-sale/<id>/<slug>?dlr=...
+    category_last = (
+        row.get("Category", "").split(" - ")[-1].strip()
+        if row.get("Category", "")
+        else ""
     )
-    if not listing_url:
-        return None
+    listing_url = build_listing_url(vehicle_id, year, make, model, category_last)
 
     # Custom labels for Sets segmentation
     inventory_type = row.get("InventoryType", "")
